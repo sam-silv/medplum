@@ -12,15 +12,46 @@ const BASE_METRIC_OPTIONS = { attributes: { hostname } } satisfies RecordMetricO
 const METRIC_IN_SECS_OPTIONS = { ...BASE_METRIC_OPTIONS, options: { unit: 's' } } satisfies RecordMetricOptions;
 
 export async function healthcheckHandler(_req: Request, res: Response): Promise<void> {
-  const pool = getDatabasePool(DatabaseMode.WRITER);
+  const writerPool = getDatabasePool(DatabaseMode.WRITER);
+  const readerPool = getDatabasePool(DatabaseMode.READER);
 
-  setGauge('medplum.db.idleConnections', pool.idleCount, BASE_METRIC_OPTIONS);
-  setGauge('medplum.db.queriesAwaitingClient', pool.waitingCount, BASE_METRIC_OPTIONS);
+  setGauge('medplum.db.idleConnections', writerPool.idleCount, {
+    ...BASE_METRIC_OPTIONS,
+    attributes: { ...BASE_METRIC_OPTIONS.attributes, dbInstanceType: 'writer' },
+  });
+  setGauge('medplum.db.queriesAwaitingClient', writerPool.waitingCount, {
+    ...BASE_METRIC_OPTIONS,
+    attributes: { ...BASE_METRIC_OPTIONS.attributes, dbInstanceType: 'writer' },
+  });
+
+  if (writerPool !== readerPool) {
+    setGauge('medplum.db.idleConnections', readerPool.idleCount, {
+      ...BASE_METRIC_OPTIONS,
+      attributes: { ...BASE_METRIC_OPTIONS.attributes, dbInstanceType: 'reader' },
+    });
+    setGauge('medplum.db.queriesAwaitingClient', readerPool.waitingCount, {
+      ...BASE_METRIC_OPTIONS,
+      attributes: { ...BASE_METRIC_OPTIONS.attributes, dbInstanceType: 'reader' },
+    });
+  }
 
   let startTime = Date.now();
-  const postgresOk = await testPostgres(pool);
-  const dbRoundtripMs = Date.now() - startTime;
-  setGauge('medplum.db.healthcheckRTT', dbRoundtripMs / 1000, METRIC_IN_SECS_OPTIONS);
+  const postgresWriterOk = await testPostgres(writerPool);
+  const writerRoundtripMs = Date.now() - startTime;
+  setGauge('medplum.db.healthcheckRTT', writerRoundtripMs / 1000, {
+    ...METRIC_IN_SECS_OPTIONS,
+    attributes: { ...METRIC_IN_SECS_OPTIONS.attributes, dbInstanceType: 'writer' },
+  });
+
+  if (writerPool !== readerPool) {
+    startTime = Date.now();
+    await testPostgres(readerPool);
+    const readerRoundtripMs = Date.now() - startTime;
+    setGauge('medplum.db.healthcheckRTT', readerRoundtripMs / 1000, {
+      ...METRIC_IN_SECS_OPTIONS,
+      attributes: { ...METRIC_IN_SECS_OPTIONS.attributes, dbInstanceType: 'reader' },
+    });
+  }
 
   startTime = Date.now();
   const redisOk = await testRedis();
@@ -47,7 +78,7 @@ export async function healthcheckHandler(_req: Request, res: Response): Promise<
     version: MEDPLUM_VERSION,
     platform: process.platform,
     runtime: process.version,
-    postgres: postgresOk,
+    postgres: postgresWriterOk,
     redis: redisOk,
   });
 }

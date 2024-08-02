@@ -26,7 +26,7 @@ export interface MedplumServerConfig {
   approvedSenderEmails?: string;
   database: MedplumDatabaseConfig;
   databaseProxyEndpoint?: string;
-  readonlyDatabase: MedplumDatabaseConfig;
+  readonlyDatabase?: MedplumDatabaseConfig;
   readonlyDatabaseProxyEndpoint?: string;
   redis: MedplumRedisConfig;
   emailProvider?: 'none' | 'awsses' | 'smtp';
@@ -54,6 +54,7 @@ export interface MedplumServerConfig {
   heartbeatMilliseconds?: number;
   heartbeatEnabled?: boolean;
   accurateCountThreshold: number;
+  slowQueryThresholdMilliseconds?: number;
   defaultBotRuntimeVersion: 'awslambda' | 'vmcontext';
   defaultProjectFeatures?:
     | (
